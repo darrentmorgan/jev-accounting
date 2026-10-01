@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Jev · Accounting lab</title>
+  <style>
+    :root { --paper:#f6f5f0; --card:#fff; --ink:#202d36; --muted:#65717a; --line:#e1e5e6; --blue:#245fe5; --blue-wash:#eef3ff; --green:#24654e; --green-wash:#edf6f0; --amber:#865a19; --amber-wash:#fcf4e5; --red:#a53638; --radius:16px; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    button,textarea { font:inherit; }
+    button { cursor:pointer; }
+    button:disabled { cursor:not-allowed; opacity:.48; }
+    button:focus-visible,textarea:focus-visible,a:focus-visible { outline:3px solid #94b4ff; outline-offset:3px; }
+    button { transition:background .15s,box-shadow .15s; }
+    [hidden] { display:none !important; }
+    .shell { width:min(1200px,calc(100% - 64px)); margin:auto; }
+    .topbar { height:88px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:20px; }
+    .brand { display:flex; align-items:center; gap:12px; }
+    .brand-mark { width:36px; height:36px; background:var(--ink); color:white; border-radius:10px; display:grid; place-items:center; }
+    .brand-mark svg { width:20px; height:20px; }
+    .brand-name { font-size:21px; font-weight:750; letter-spacing:-.8px; }
+    .brand-divider { color:#bdc3c5; font-weight:300; margin:0 5px; }
+    .brand-sub { font-size:12px; letter-spacing:1.6px; font-weight:600; color:var(--muted); }
+    .local-tag { font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--muted); display:flex; align-items:center; gap:8px; }
+    .local-tag::before { content:""; width:6px; height:6px; background:#8a9499; border-radius:50%; }
+    .intro { padding:44px 0 30px; display:flex; justify-content:space-between; align-items:flex-end; gap:24px; }
+    .eyebrow { margin:0 0 10px; text-transform:uppercase; font-size:11px; font-weight:700; letter-spacing:1.5px; color:var(--blue); }
+    h1 { font-size:clamp(30px,4vw,43px); font-weight:650; line-height:1.15; letter-spacing:-1.6px; margin:0 0 12px; }
+    .intro p:last-child { color:var(--muted); margin:0; max-width:620px; font-size:16px; }
+    .model-tag { flex-shrink:0; border:1px solid var(--line); padding:8px 12px; border-radius:8px; color:var(--muted); background:#ffffff80; font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .steps { display:flex; margin:0 0 25px; gap:28px; color:var(--muted); font-size:12px; }
+    .step { display:flex; align-items:center; gap:8px; }
+    .step span { font-size:10px; background:#e9ecea; border-radius:50%; height:20px; width:20px; display:grid; place-items:center; font-weight:650; color:#626c70; }
+    .workspace { display:grid; grid-template-columns:minmax(0,1fr) 320px; align-items:start; gap:22px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 3px 7px #20303a03; overflow:hidden; }
+    .card-head { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:22px 24px 16px; }
+    h2 { font-size:17px; line-height:1.4; letter-spacing:-.35px; font-weight:650; margin:0; }
+    .subtext { color:var(--muted); font-size:12px; margin:5px 0 0; }
+    .button { border:1px solid var(--line); background:white; color:var(--ink); border-radius:8px; padding:8px 12px; font-size:12px; font-weight:600; line-height:1.5; white-space:nowrap; }
+    .button:hover:not(:disabled) { background:#f6f8fa; }
+    .button-primary { background:var(--blue); border-color:var(--blue); color:white; padding:11px 17px; font-size:13px; min-width:168px; display:flex; align-items:center; justify-content:center; gap:11px; }
+    .button-primary:hover:not(:disabled) { background:#184dcb; }
+    .button-primary svg { width:15px; height:15px; }
+    .editor { padding:0 24px; }
+    .editor-label { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; color:var(--muted); font-size:11px; font-weight:600; }
+    .editor-label span { font-weight:400; }
+    textarea { display:block; resize:vertical; min-height:248px; width:100%; border:1px solid #dce1e4; border-radius:10px; background:#fbfcfd; color:#344453; padding:15px 16px; font:12px/1.9 ui-monospace,SFMono-Regular,Menlo,monospace; tab-size:2; }
+    textarea:disabled { color:#78848c; }
+    .format { font-size:11px; color:var(--muted); margin:10px 0 0; }
+    code { font: .93em ui-monospace,SFMono-Regular,Menlo,monospace; }
+    .input-status { min-height:22px; font-size:12px; margin:12px 0 0; color:var(--muted); }
+    .input-status[data-tone="error"] { color:var(--red); }
+    .input-status[data-tone="ready"] { color:var(--green); }
+    .input-footer { padding:19px 24px 22px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
+    .input-note { font-size:11px; color:var(--muted); max-width:220px; }
+    .settings { padding:22px; }
+    .settings h2 { font-size:14px; }
+    .connection { padding:12px; border-radius:9px; background:#f2f4f5; margin:15px 0 20px; }
+    .connection-title { display:flex; align-items:center; gap:7px; font-weight:600; font-size:12px; }
+    .dot { width:6px; height:6px; background:#8d989f; border-radius:50%; flex-shrink:0; }
+    .connection p { margin:6px 0 0; color:var(--muted); font-size:11px; line-height:1.6; }
+    .connection[data-state="ready"] { background:var(--green-wash); }
+    .connection[data-state="ready"] .connection-title { color:var(--green); }
+    .connection[data-state="ready"] .dot { background:var(--green); }
+    .connection[data-state="missing"] { background:var(--amber-wash); }
+    .connection[data-state="missing"] .connection-title { color:var(--amber); }
+    .connection[data-state="missing"] .dot { background:var(--amber); }
+    .section-label { color:var(--muted); font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; margin:18px 0 10px; display:flex; justify-content:space-between; align-items:center; }
+    .category-list { margin:0; padding:0; list-style:none; max-height:265px; overflow:auto; }
+    .category-list li { padding:8px 0; border-bottom:1px solid #edf0f1; font-size:12px; }
+    .category-list li:last-child { border-bottom:0; }
+    .category-list strong { display:block; font-weight:550; }
+    .category-list small { display:block; color:var(--muted); font-size:10px; margin-top:1px; line-height:1.5; }
+    .review-rule { margin:17px -22px -22px; padding:16px 22px 20px; background:#fafbf9; border-top:1px solid var(--line); }
+    .review-rule strong { font-size:12px; font-weight:600; }
+    .review-rule p { color:var(--muted); font-size:11px; margin:5px 0 0; }
+    .results { margin:24px 0 0; }
+    .results .card-head { padding-bottom:20px; }
+    .result-header-left { min-width:0; }
+    .empty { border-top:1px solid var(--line); text-align:center; padding:37px 24px 41px; color:var(--muted); }
+    .empty-icon { width:35px; height:35px; margin:0 auto 10px; color:#92a0aa; }
+    .empty strong { font-weight:550; color:#596771; font-size:13px; display:block; }
+    .empty p { margin:5px 0 0; font-size:12px; }
+    .summary { display:flex; gap:10px; flex-wrap:wrap; padding:0 24px 18px; }
+    .summary-chip { font-size:11px; padding:4px 9px; border-radius:5px; background:#f1f4f5; color:var(--muted); }
+    .summary-chip.green { background:var(--green-wash); color:var(--green); }
+    .summary-chip.amber { background:var(--amber-wash); color:var(--amber); }
+    .table-wrap { overflow:auto; border-top:1px solid var(--line); }
+    table { width:100%; border-collapse:collapse; text-align:left; font-size:12px; }
+    th { color:var(--muted); text-transform:uppercase; font-size:9px; letter-spacing:.9px; font-weight:600; padding:12px 20px; background:#fafbfc; white-space:nowrap; }
+    td { padding:17px 20px; border-top:1px solid #edf0f2; vertical-align:top; }
+    th:first-child,td:first-child { padding-left:24px; }
+    th:last-child,td:last-child { padding-right:24px; }
+    .transaction-description { display:block; max-width:310px; min-width:170px; overflow-wrap:anywhere; font-weight:550; }
+    .amount { white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .row-detail { display:block; font-size:10px; margin-top:5px; color:var(--muted); max-width:240px; line-height:1.6; overflow-wrap:anywhere; }
+    .category-value { font-weight:550; white-space:nowrap; }
+    .probability { font-variant-numeric:tabular-nums; min-width:72px; }
+    .probability-track { height:3px; width:64px; background:#edf0f2; margin:7px 0 0; border-radius:4px; overflow:hidden; }
+    .probability-track span { display:block; height:100%; background:#83a7ee; }
+    .decision { display:inline-block; padding:3px 8px; font-size:10px; border-radius:5px; white-space:nowrap; background:var(--green-wash); color:var(--green); }
+    .decision.review { color:var(--amber); background:var(--amber-wash); }
+    .result-note { border-top:1px solid var(--line); color:var(--muted); font-size:11px; padding:13px 24px; margin:0; }
+    .notice { padding:12px 15px; border-radius:9px; font-size:12px; background:var(--blue-wash); color:#355681; margin:0 0 18px; overflow-wrap:anywhere; }
+    .notice[data-tone="error"] { color:var(--red); background:#fbeeee; }
+    footer { display:flex; justify-content:space-between; gap:16px; padding:25px 0 36px; font-size:10px; color:#889198; }
+    .spinner { display:inline-block; width:13px; height:13px; border:2px solid #ffffff60; border-top-color:white; border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @media (prefers-reduced-motion:reduce) { * { transition:none !important; } .spinner { animation:none; } }
+    @media (max-width:900px) { .workspace { grid-template-columns:minmax(0,1fr) 280px; gap:16px; } .intro { align-items:flex-start; } .model-tag { margin-top:7px; font-size:10px; } .input-footer { align-items:flex-start; flex-direction:column; } .input-note { max-width:none; } }
+    @media (max-width:720px) { .shell { width:calc(100% - 32px); } .topbar { height:72px; } .brand-sub { font-size:10px; letter-spacing:1px; } .local-tag { font-size:9px; letter-spacing:.7px; } .intro { padding:30px 0 22px; display:block; } .intro p:last-child { font-size:14px; } .model-tag { display:inline-block; margin-top:16px; } .workspace { grid-template-columns:1fr; } .settings { padding:20px; } .category-list { display:grid; grid-template-columns:1fr 1fr; gap:0 18px; max-height:210px; } .review-rule { margin:17px -20px -20px; padding:16px 20px; } .connection { margin-bottom:15px; } .steps { gap:18px; font-size:11px; } .card-head { padding:18px 18px 15px; } .editor { padding:0 18px; } .input-footer { padding:17px 18px 20px; flex-direction:row; align-items:center; } .input-note { max-width:160px; } .results .card-head { padding:18px; } .summary { padding:0 18px 16px; } footer { flex-direction:column; gap:3px; } }
+    @media (max-width:430px) { .brand-divider,.brand-sub { display:none; } .input-footer { flex-direction:column; align-items:stretch; } .input-note { max-width:none; } .button-primary { width:100%; } .steps { gap:13px; } .card-head { gap:8px; } h2 { font-size:15px; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14v14H5zM9 5v14M9 10h10M9 14h10" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
+        <span class="brand-name">jev</span><span class="brand-divider" aria-hidden="true">/</span><span class="brand-sub">ACCOUNTING LAB</span>
+      </div>
+      <span class="local-tag">Local prototype</span>
+    </header>
+    <main>
+      <section class="intro" aria-labelledby="page-title">
+        <div><p class="eyebrow">Bank transactions → account categories</p><h1 id="page-title">A clearer first pass.</h1><p>Classify a small batch with Jev, then review the suggestions.</p></div>
+        <div class="model-tag" id="model-label">typesafe-ai/jev</div>
+      </section>
+      <div class="steps" aria-label="Workflow"><div class="step"><span>1</span>Prepare transactions</div><div class="step"><span>2</span>Run Jev</div><div class="step"><span>3</span>Review results</div></div>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <div class="workspace">
+        <section class="card" aria-labelledby="input-title">
+          <div class="card-head"><div><h2 id="input-title">Bank transactions</h2><p class="subtext">Paste a CSV or start with synthetic examples.</p></div><button id="sample-button" class="button" type="button" disabled>Load sample</button></div>
+          <div class="editor">
+            <label class="editor-label" for="csv-input">TRANSACTION CSV <span id="row-limit">Up to 25 rows</span></label>
+            <textarea id="csv-input" spellcheck="false" autocapitalize="off" autocomplete="off" aria-describedby="csv-format input-status" placeholder="description,amount,currency&#10;Monthly software subscription,-49.00,AUD" disabled></textarea>
+            <p class="format" id="csv-format">Required: <code>description,amount</code>. Optional: <code>currency</code> (defaults to <span id="default-currency">AUD</span>). Use negative amounts for money out.</p>
+            <p class="input-status" id="input-status" role="status" aria-live="polite">Loading configuration…</p>
+          </div>
+          <div class="input-footer"><span class="input-note">Clicking Classify sends these transactions to Jev through Vercel AI Gateway.</span><button id="classify-button" class="button button-primary" type="button" disabled><span id="classify-label">Classify with Jev</span><svg id="classify-arrow" aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M4 10h12m-5-5 5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><span id="classify-spinner" class="spinner" aria-hidden="true" hidden></span></button></div>
+        </section>
+        <aside class="card settings" aria-labelledby="settings-title">
+          <h2 id="settings-title">Classification setup</h2>
+          <div id="connection" class="connection"><div class="connection-title"><span class="dot" aria-hidden="true"></span><span id="connection-title">Checking connection</span></div><p id="connection-detail">Reading the local server configuration.</p></div>
+          <div class="section-label">Account categories <span id="category-count"></span></div>
+          <ul class="category-list" id="categories" aria-label="Available account categories"></ul>
+          <div class="review-rule"><strong id="review-rule-title">Uncertain transactions stay Unassigned.</strong><p id="review-rule-detail">Jev’s probability score is a model estimate, not guaranteed accuracy. Review all suggestions before using them.</p></div>
+        </aside>
+      </div>
+      <section class="card results" aria-labelledby="results-title" id="results-section" aria-busy="false">
+        <div class="card-head"><div class="result-header-left"><h2 id="results-title">Classification results</h2><p class="subtext" id="results-meta">Your results will appear here.</p></div><button class="button" id="download-button" type="button" disabled>Download CSV</button></div>
+        <div class="empty" id="empty-results"><svg class="empty-icon" viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 4h13l5 5v19H7V4Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M20 4v6h5M12 15h8M12 20h8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg><strong id="empty-title">Ready for a first pass</strong><p id="empty-detail">Run a batch to see category suggestions and items needing review.</p></div>
+        <div id="results-body" hidden><div class="summary" id="result-summary"></div><div class="table-wrap"><table><thead><tr><th scope="col">Transaction</th><th scope="col">Amount</th><th scope="col">Jev suggestion</th><th scope="col">Probability</th><th scope="col">Assignment</th></tr></thead><tbody id="result-rows"></tbody></table></div><p class="result-note">These are proposed categories. Nothing is posted to an accounting system.</p></div>
+      </section>
+    </main>
+    <footer><span>Jev accounting lab · Synthetic examples included</span><span>Local interface · Model requests use Vercel AI Gateway</span></footer>
+  </div>
+  <script>
+    'use strict';
+    const $ = (id) => document.getElementById(id);
+    let config = null;
+    const defaultCurrency = () => config?.defaultCurrency ?? 'AUD';
+    let transactions = [];
+    let latestResults = null;
+    let busy = false;
+
+    function element(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function parseCsv(source) {
+      const input = source.replace(/^\uFEFF/, '');
+      const rows = [];
+      let row = [], field = '', quoted = false, closed = false;
+      const finishField = () => { row.push(field); field = ''; closed = false; };
+      const finishRow = () => { finishField(); rows.push(row); row = []; };
+      for (let i = 0; i < input.length; i++) {
+        const char = input[i];
+        if (quoted) {
+          if (char === '"') {
+            if (input[i + 1] === '"') { field += '"'; i++; }
+            else { quoted = false; closed = true; }
+          } else { field += char; }
+          continue;
+        }
+        if (closed && char !== ',' && char !== '\n' && char !== '\r') {
+          if (char === ' ' || char === '\t') continue;
+          throw new Error('Unexpected text after a closing quote. Separate CSV fields with commas.');
+        }
+        if (char === '"') {
+          if (field.length) throw new Error('A quoted field must start with a quote. Double any quotes inside the field.');
+          quoted = true;
+        } else if (char === ',') { finishField(); }
+        else if (char === '\n' || char === '\r') {
+          finishRow();
+          if (char === '\r' && input[i + 1] === '\n') i++;
+        } else { field += char; }
+      }
+      if (quoted) throw new Error('A quoted field is missing its closing quote.');
+      if (field.length || row.length || closed) finishRow();
+      return rows.filter((values) => values.some((value) => value.trim() !== ''));
+    }
+
+    function readTransactions(source, limit) {
+      const rows = parseCsv(source);
+      if (!rows.length) return [];
+      const headers = rows[0].map((value) => value.trim().toLowerCase());
+      if (new Set(headers).size !== headers.length) throw new Error('CSV headers must be unique.');
+      const descriptionIndex = headers.indexOf('description');
+      const amountIndex = headers.indexOf('amount');
+      const currencyIndex = headers.indexOf('currency');
+      if (descriptionIndex < 0 || amountIndex < 0) throw new Error('Start with a header row containing description,amount and optionally currency.');
+      if (rows.length - 1 > limit) throw new Error(`Use at most ${limit} transactions per batch. This CSV contains ${rows.length - 1}.`);
+      return rows.slice(1).map((values, index) => {
+        const rowNumber = index + 2;
+        if (values.length !== headers.length) throw new Error(`CSV row ${rowNumber} has ${values.length} fields; the header has ${headers.length}. Put descriptions containing commas in double quotes.`);
+        const description = values[descriptionIndex].trim();
+        const amountText = values[amountIndex].trim();
+        const currency = (currencyIndex < 0 ? defaultCurrency() : values[currencyIndex].trim() || defaultCurrency()).toUpperCase();
+        if (!description || description.length > 1000) throw new Error(`CSV row ${rowNumber} needs a description between 1 and 1,000 characters.`);
+        if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(amountText) || !Number.isFinite(Number(amountText))) throw new Error(`CSV row ${rowNumber} needs a numeric amount, such as -49.00. Remove currency symbols and thousands separators.`);
+        if (Number(amountText) === 0 || Math.abs(Number(amountText)) > 1e12) throw new Error(`CSV row ${rowNumber} needs a nonzero amount no greater than 1 trillion in absolute value.`);
+        if (!/^[A-Z]{3}$/.test(currency)) throw new Error(`CSV row ${rowNumber} needs a three-letter currency code, such as AUD.`);
+        return { description, amount: Number(amountText), currency };
+      });
+    }
+
+    function csvCell(value) {
+      if (typeof value === 'number') return String(value);
+      let text = String(value ?? '');
+      // Preserve numeric amounts as numbers while protecting free text in spreadsheet apps.
+      if (/^[\s\u0000-\u001f]*[=+\-@]/.test(text) || /^[\t\r\n]/.test(text)) text = "'" + text;
+      return '"' + text.replace(/"/g, '""') + '"';
+    }
+
+    function showNotice(message, tone = 'info') {
+      $('notice').textContent = message;
+      $('notice').dataset.tone = tone;
+      $('notice').hidden = !message;
+    }
+
+    function resetResults() {
+      latestResults = null;
+      $('download-button').disabled = true;
+      $('results-body').hidden = true;
+      $('empty-results').hidden = false;
+      $('empty-title').textContent = 'Ready for a first pass';
+      $('empty-detail').textContent = 'Run a batch to see category suggestions and items needing review.';
+      $('results-meta').textContent = 'Your results will appear here.';
+    }
+
+    function validateInput() {
+      transactions = [];
+      try {
+        transactions = readTransactions($('csv-input').value, config?.maxTransactions ?? 25);
+        $('input-status').dataset.tone = transactions.length ? 'ready' : 'neutral';
+        $('input-status').textContent = transactions.length ? `${transactions.length} transaction${transactions.length === 1 ? '' : 's'} ready to classify.` : 'Paste transactions or load the sample to begin.';
+        $('csv-input').setAttribute('aria-invalid', 'false');
+      } catch (error) {
+        $('input-status').dataset.tone = 'error';
+        $('input-status').textContent = error.message;
+        $('csv-input').setAttribute('aria-invalid', 'true');
+      }
+      $('classify-button').disabled = busy || !config?.configured || !transactions.length;
+    }
+
+    function loadSample() {
+      const rows = [['description', 'amount', 'currency'], ...config.samples.map((sample) => [sample.description, sample.amount, sample.currency])];
+      $('csv-input').value = rows.map((row) => row.map(csvCell).join(',')).join('\n');
+      resetResults();
+      showNotice('Synthetic sample loaded. Edit it or click Classify with Jev to make a live model request.');
+      validateInput();
+    }
+
+    function setBusy(value) {
+      busy = value;
+      $('csv-input').disabled = value;
+      $('sample-button').disabled = value;
+      $('classify-label').textContent = value ? 'Classifying…' : 'Classify with Jev';
+      $('classify-arrow').hidden = value;
+      $('classify-spinner').hidden = !value;
+      $('results-section').setAttribute('aria-busy', String(value));
+      validateInput();
+    }
+
+    function formatAmount(transaction) {
+      try { return new Intl.NumberFormat('en-AU', { style: 'currency', currency: transaction.currency, currencyDisplay: 'code' }).format(transaction.amount); }
+      catch { return `${transaction.currency} ${transaction.amount.toFixed(2)}`; }
+    }
+
+    function renderResults(data) {
+      latestResults = data;
+      $('result-rows').replaceChildren();
+      const reviewCount = data.results.filter((result) => result.needsReview || result.error).length;
+      const errorCount = data.results.filter((result) => result.error).length;
+      $('result-summary').replaceChildren(
+        element('span', 'summary-chip green', `${data.results.length - reviewCount} assigned`),
+        element('span', 'summary-chip amber', `${reviewCount} need review`),
+        element('span', 'summary-chip', `${Math.round(data.threshold * 100)}% assignment threshold`),
+      );
+      if (errorCount) $('result-summary').append(element('span', 'summary-chip amber', `${errorCount} request${errorCount === 1 ? '' : 's'} failed`));
+      for (const result of data.results) {
+        const tr = element('tr');
+        const description = element('td');
+        description.append(element('span', 'transaction-description', result.transaction.description));
+        const amount = element('td', 'amount', formatAmount(result.transaction));
+        const suggestion = element('td');
+        suggestion.append(element('span', 'category-value', result.error ? 'Unavailable' : result.suggestedLabel || result.suggestedCategory || 'Unavailable'));
+        if (result.error) suggestion.append(element('span', 'row-detail', result.error));
+        const probability = element('td', 'probability');
+        const hasProbability = typeof result.confidence === 'number' && Number.isFinite(result.confidence);
+        probability.append(element('span', '', hasProbability ? `${(result.confidence * 100).toFixed(1)}%` : '—'));
+        if (hasProbability) {
+          const track = element('div', 'probability-track');
+          track.setAttribute('aria-hidden', 'true');
+          const fill = element('span');
+          fill.style.width = `${Math.max(0, Math.min(100, result.confidence * 100))}%`;
+          track.append(fill);
+          probability.append(track);
+        }
+        const assignment = element('td');
+        const needsReview = result.needsReview || Boolean(result.error);
+        assignment.append(element('span', 'decision' + (needsReview ? ' review' : ''), needsReview ? 'Unassigned · Review' : result.assignedLabel || result.assignedCategory));
+        if (needsReview && result.reviewReason) assignment.append(element('span', 'row-detail', result.reviewReason));
+        tr.append(description, amount, suggestion, probability, assignment);
+        $('result-rows').append(tr);
+      }
+      const seconds = typeof data.latencyMs === 'number' ? ` · ${(data.latencyMs / 1000).toFixed(1)}s` : '';
+      const tokens = typeof data.inputTokens === 'number' ? ` · ${data.inputTokens.toLocaleString()} input tokens` : '';
+      $('results-meta').textContent = `${data.results.length} transaction${data.results.length === 1 ? '' : 's'} · ${data.model}${seconds}${tokens}`;
+      $('empty-results').hidden = true;
+      $('results-body').hidden = false;
+      $('download-button').disabled = !data.results.length;
+      showNotice(errorCount ? `Batch finished with ${errorCount} failed request${errorCount === 1 ? '' : 's'}. Those transactions remain Unassigned.` : `Classification complete. ${reviewCount ? `${reviewCount} transaction${reviewCount === 1 ? '' : 's'} need review.` : 'Review the proposed categories below.'}`, errorCount ? 'error' : 'info');
+    }
+
+    async function classify() {
+      validateInput();
+      if (busy || !config?.configured || !transactions.length) return;
+      const batch = transactions.map((transaction) => ({ ...transaction }));
+      resetResults();
+      setBusy(true);
+      showNotice(`Classifying ${batch.length} transaction${batch.length === 1 ? '' : 's'} with Jev…`);
+      $('empty-title').textContent = 'Jev is classifying your transactions';
+      $('empty-detail').textContent = 'This can take a little while. Results will appear when the batch finishes.';
+      try {
+        const response = await fetch('/api/classify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transactions: batch }) });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
+        if (!Array.isArray(data.results) || data.results.length !== batch.length) throw new Error('The server returned an incomplete batch. No results have been accepted.');
+        renderResults(data);
+      } catch (error) {
+        resetResults();
+        $('empty-title').textContent = 'Classification could not finish';
+        $('empty-detail').textContent = 'Your input is still here. Check the message above and try again.';
+        showNotice(error.message || 'Could not reach the local server.', 'error');
+      } finally { setBusy(false); }
+    }
+
+    function downloadResults() {
+      if (!latestResults) return;
+      const headers = ['description', 'amount', 'currency', 'suggested_category', 'assigned_category', 'probability', 'needs_review', 'review_reason', 'error', 'model'];
+      const rows = latestResults.results.map((result) => [result.transaction.description, result.transaction.amount, result.transaction.currency, result.suggestedLabel || result.suggestedCategory, result.assignedLabel || result.assignedCategory, result.confidence, String(Boolean(result.needsReview || result.error)), result.reviewReason, result.error, latestResults.model]);
+      const csv = '\uFEFF' + [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n') + '\r\n';
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const link = element('a');
+      link.href = url;
+      link.download = `jev-classifications-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    async function initialize() {
+      try {
+        const response = await fetch('/api/config');
+        if (!response.ok) throw new Error(`Configuration request failed (${response.status}).`);
+        config = await response.json();
+        if (!Array.isArray(config.categories) || !Array.isArray(config.samples)) throw new Error('The local server returned an invalid configuration.');
+        $('model-label').textContent = config.model;
+        $('default-currency').textContent = defaultCurrency();
+        $('row-limit').textContent = `Up to ${config.maxTransactions} rows`;
+        $('category-count').textContent = config.categories.length;
+        for (const category of config.categories) {
+          const li = element('li');
+          li.append(element('strong', '', category.label), element('small', '', category.description));
+          $('categories').append(li);
+        }
+        $('review-rule-title').textContent = `Below ${Math.round(config.threshold * 100)}% stays Unassigned.`;
+        $('connection').dataset.state = config.configured ? 'ready' : 'missing';
+        $('connection-title').textContent = config.configured ? 'Gateway key configured' : 'Gateway key needed';
+        $('connection-detail').textContent = config.configured ? 'Ready for a live request. Authentication is checked when you classify a batch.' : 'Add AI_GATEWAY_API_KEY to the local .env file, restart the server, then reload this page. Keep the key out of the transaction input.';
+        $('csv-input').disabled = false;
+        $('sample-button').disabled = false;
+        loadSample();
+      } catch (error) {
+        $('connection').dataset.state = 'missing';
+        $('connection-title').textContent = 'Server unavailable';
+        $('connection-detail').textContent = 'Start the local server, then reload this page.';
+        $('input-status').textContent = 'Configuration could not be loaded.';
+        $('input-status').dataset.tone = 'error';
+        showNotice(error.message || 'Could not load the local server configuration.', 'error');
+      }
+    }
+
+    $('csv-input').addEventListener('input', () => { resetResults(); showNotice(''); validateInput(); });
+    $('sample-button').addEventListener('click', loadSample);
+    $('classify-button').addEventListener('click', classify);
+    $('download-button').addEventListener('click', downloadResults);
+    initialize();
+  </script>
+</body>
+</html>

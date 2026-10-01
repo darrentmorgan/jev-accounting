@@ -1,0 +1,17 @@
+{
+  "name": "jev-accounting-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --experimental-strip-types src/server.ts",
+    "start": "node --env-file-if-exists=.env dist/server.js",
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
+  "dependencies": { "ai": "7.0.107" },
+  "devDependencies": { "@types/node": "26.6.2", "typescript": "7.0.2" }
+}
