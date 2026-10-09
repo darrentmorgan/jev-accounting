@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { setTimeout as delay } from 'node:timers/promises';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { createContext, runInContext } from 'node:vm';
 import test from 'node:test';
@@ -17,16 +18,21 @@ class Node {
   dataset: Record<string, string> = {};
   style: Record<string, string> = {};
   children: Node[] = [];
+  attributes = new Map<string, string>();
   listeners = new Map<string, () => unknown>();
   append(...nodes: Node[]) { this.children.push(...nodes); }
   replaceChildren(...nodes: Node[]) { this.children = nodes; }
-  setAttribute() {}
+  setAttribute(name: string, value: string) { this.attributes.set(name, value); }
   addEventListener(event: string, listener: () => unknown) { this.listeners.set(event, listener); }
   click() { return this.listeners.get('click')?.(); }
   remove() {}
 }
 
-async function page(options: Parameters<typeof createApp>[0]) {
+type BrowserResponse = Pick<Response, 'ok' | 'status' | 'json'>;
+
+async function page(options: Parameters<typeof createApp>[0], browser: {
+  classifyFetch?: (init: RequestInit | undefined, send: () => Promise<Response>) => Promise<BrowserResponse>;
+} = {}) {
   const server = createApp(options);
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -35,8 +41,11 @@ async function page(options: Parameters<typeof createApp>[0]) {
   const url = `http://127.0.0.1:${address.port}`;
   const nodes = new Map<string, Node>();
   let download: Blob | undefined;
+  let downloads = 0;
   let filename = '';
   let classified: any;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const scheduledDelays: number[] = [];
   const get = (id: string) => {
     if (!nodes.has(id)) nodes.set(id, new Node());
     return nodes.get(id)!;
@@ -52,21 +61,34 @@ async function page(options: Parameters<typeof createApp>[0]) {
         body: { append: (node: Node) => { filename = node.download; } },
       },
       fetch: async (path: string, init?: RequestInit) => {
-        const response = await fetch(url + path, init);
-        if (path === '/api/classify') classified = await response.clone().json();
-        return response;
+        const send = async () => {
+          const response = await fetch(url + path, init);
+          if (path === '/api/classify') classified = await response.clone().json();
+          return response;
+        };
+        return path === '/api/classify' && browser.classifyFetch ? browser.classifyFetch(init, send) : send();
       },
       Blob,
+      AbortController,
       URL: {
-        createObjectURL: (blob: Blob) => { download = blob; return 'blob:smoke'; },
+        createObjectURL: (blob: Blob) => { downloads++; download = blob; return 'blob:smoke'; },
         revokeObjectURL: () => {},
       },
-      setTimeout: (callback: () => void) => { callback(); },
+      setTimeout: (callback: () => void, ms: number) => {
+        scheduledDelays.push(ms);
+        const timer = setTimeout(() => { timers.delete(timer); callback(); }, ms);
+        timers.add(timer);
+        return timer;
+      },
+      clearTimeout: (timer: ReturnType<typeof setTimeout>) => { clearTimeout(timer); timers.delete(timer); },
     });
     await runInContext(script, context);
     assert.equal(get('sample-button').disabled, false, 'configuration loaded');
     return {
       get,
+      downloads: () => downloads,
+      scheduledDelays: () => scheduledDelays,
+      classify: (deadlineMs: number) => runInContext(`classify(${deadlineMs})`, context) as Promise<void>,
       classified: () => classified,
       csv: async () => {
         assert.equal(get('download-button').disabled, false);
@@ -79,11 +101,13 @@ async function page(options: Parameters<typeof createApp>[0]) {
         return { text, rows };
       },
       close: async () => {
+        for (const timer of timers) clearTimeout(timer);
         server.closeAllConnections();
         await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       },
     };
   } catch (error) {
+    for (const timer of timers) clearTimeout(timer);
     server.closeAllConnections();
     await new Promise<void>(resolve => server.close(() => resolve()));
     throw error;
@@ -171,6 +195,84 @@ test('rejected synthetic batch clears exports, preserves input, and can retry', 
     checkExport((await app.csv()).rows);
   } finally { await app.close(); }
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
+for (const stalledAt of ['fetch', 'body'] as const) {
+  test(`stalled ${stalledAt} expires, ignores late results, and permits a fresh batch`, async () => {
+    let calls = 0;
+    let expiredSignal: AbortSignal | undefined;
+    const lateResponse = deferred<BrowserResponse>();
+    const lateBody = deferred<any>();
+    const freshResponse = deferred<BrowserResponse>();
+    const app = await page({ configured: () => true, evaluator: async () => answer() }, {
+      classifyFetch: async (init, send) => {
+        calls++;
+        if (calls === 2) {
+          expiredSignal = init?.signal ?? undefined;
+          // Deliberately ignore abort to prove late transport completions are harmless.
+          return stalledAt === 'fetch' ? lateResponse.promise : { ok: true, status: 200, json: () => lateBody.promise };
+        }
+        if (calls === 3) return freshResponse.promise;
+        return send();
+      },
+    });
+    try {
+      await app.get('classify-button').click();
+      assert.ok(app.scheduledDelays().includes(300_000), 'normal clicks use the 300-second total budget');
+      checkExport((await app.csv()).rows);
+      const originalData = app.classified();
+      const input = app.get('csv-input').value;
+      const pending = app.classify(20);
+      assert.equal(app.get('csv-input').disabled, true);
+      assert.equal(app.get('classify-spinner').hidden, false);
+      assert.equal(app.get('download-button').disabled, true);
+      assert.equal(await Promise.race([pending.then(() => 'finished'), delay(200).then(() => 'stalled')]), 'finished', 'deadline must release a never-settling request');
+      assert.equal(app.get('csv-input').value, input);
+      assert.equal(app.get('csv-input').disabled, false);
+      assert.equal(app.get('sample-button').disabled, false);
+      assert.equal(app.get('classify-button').disabled, false);
+      assert.equal(app.get('classify-spinner').hidden, true);
+      assert.equal(app.get('classify-arrow').hidden, false);
+      assert.equal(app.get('classify-label').textContent, 'Classify with Jev');
+      assert.equal(app.get('results-section').attributes.get('aria-busy'), 'false');
+      assert.equal(app.get('download-button').disabled, true);
+      assert.equal(app.get('results-body').hidden, true);
+      assert.match(app.get('notice').textContent, /uncertain/i);
+      assert.match(app.get('notice').textContent, /no results/i);
+      assert.match(app.get('notice').textContent, /provider.*charges/i);
+      assert.equal(calls, 2, 'no automatic retry');
+      assert.equal(expiredSignal?.aborted, true, 'browser transport is aborted');
+      await app.get('download-button').click();
+      assert.equal(app.downloads(), 1, 'stale results cannot create another download');
+
+      const recovery = app.get('classify-button').click();
+      const oldResponse = { ok: true, status: 200, json: async () => originalData };
+      if (stalledAt === 'fetch') lateResponse.resolve(oldResponse);
+      await delay(0);
+      assert.equal(app.get('csv-input').disabled, true, 'expired request cannot clear a newer busy state');
+      assert.equal(app.get('results-section').attributes.get('aria-busy'), 'true');
+      assert.equal(app.get('results-body').hidden, true, 'expired result cannot render');
+      assert.equal(app.get('download-button').disabled, true);
+
+      const freshData = { ...originalData, results: originalData.results.map((result: any) => ({ ...result, confidence: 0.99 })) };
+      freshResponse.resolve({ ok: true, status: 200, json: async () => freshData });
+      await recovery;
+      if (stalledAt === 'body') lateBody.resolve(originalData);
+      await delay(0);
+      const { rows } = await app.csv();
+      checkExport(rows);
+      assert.equal(rows[1][5], '0.99', 'only the fresh response populates results');
+      assert.equal(app.get('csv-input').disabled, false);
+      assert.equal(app.get('classify-spinner').hidden, true);
+      assert.equal(calls, 3);
+    } finally { await app.close(); }
+  });
+}
 
 test('optional live Jev synthetic classify-and-export', { skip: process.env.JEV_SMOKE_LIVE !== '1' }, async () => {
   assert.ok(process.env.AI_GATEWAY_API_KEY?.trim(), 'live mode requires AI_GATEWAY_API_KEY');
