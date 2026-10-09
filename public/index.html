@@ -339,7 +339,8 @@
       showNotice(errorCount ? `Batch finished with ${errorCount} failed request${errorCount === 1 ? '' : 's'}. Those transactions remain Unassigned.` : `Classification complete. ${reviewCount ? `${reviewCount} transaction${reviewCount === 1 ? '' : 's'} need review.` : 'Review the proposed categories below.'}`, errorCount ? 'error' : 'info');
     }
 
-    async function classify() {
+    // The click handler uses the five-minute budget; tests can inject a short deadline.
+    async function classify(deadlineMs = 300_000) {
       validateInput();
       if (busy || !config?.configured || !transactions.length) return;
       const batch = transactions.map((transaction) => ({ ...transaction }));
@@ -348,18 +349,38 @@
       showNotice(`Classifying ${batch.length} transaction${batch.length === 1 ? '' : 's'} with Jev…`);
       $('empty-title').textContent = 'Jev is classifying your transactions';
       $('empty-detail').textContent = 'This can take a little while. Results will appear when the batch finishes.';
+      const controller = new AbortController();
+      let expired = false;
+      let timer;
+      const deadline = new Promise((_, reject) => {
+        timer = setTimeout(() => {
+          expired = true;
+          reject(new Error('Classification response deadline expired.'));
+          controller.abort();
+        }, deadlineMs);
+      });
       try {
-        const response = await fetch('/api/classify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transactions: batch }) });
-        const data = await response.json();
+        const { response, data } = await Promise.race([
+          (async () => {
+            const response = await fetch('/api/classify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ transactions: batch }), signal: controller.signal });
+            const data = await response.json();
+            // Keep UI updates outside the race: an expired response must never render.
+            return { response, data };
+          })(),
+          deadline,
+        ]);
         if (!response.ok) throw new Error(data.error || `Request failed (${response.status}).`);
         if (!Array.isArray(data.results) || data.results.length !== batch.length) throw new Error('The server returned an incomplete batch. No results have been accepted.');
         renderResults(data);
       } catch (error) {
         resetResults();
-        $('empty-title').textContent = 'Classification could not finish';
-        $('empty-detail').textContent = 'Your input is still here. Check the message above and try again.';
-        showNotice(error.message || 'Could not reach the local server.', 'error');
-      } finally { setBusy(false); }
+        $('empty-title').textContent = expired ? 'Classification outcome is uncertain' : 'Classification could not finish';
+        $('empty-detail').textContent = expired ? 'No results have been accepted. Your input is still here and remains Unassigned.' : 'Your input is still here. Check the message above and try again.';
+        showNotice(expired ? 'The classification response deadline expired. The outcome is uncertain; no results have been accepted. Provider work and charges may continue. No automatic retry was made. Wait before manually trying again; the server may still be processing this batch.' : error.message || 'Could not reach the local server.', 'error');
+      } finally {
+        clearTimeout(timer);
+        setBusy(false);
+      }
     }
 
     function downloadResults() {
@@ -411,7 +432,7 @@
 
     $('csv-input').addEventListener('input', () => { resetResults(); showNotice(''); validateInput(); });
     $('sample-button').addEventListener('click', loadSample);
-    $('classify-button').addEventListener('click', classify);
+    $('classify-button').addEventListener('click', () => classify());
     $('download-button').addEventListener('click', downloadResults);
     initialize();
   </script>
