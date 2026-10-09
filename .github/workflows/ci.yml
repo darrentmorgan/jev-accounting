@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Type check, tests, and build
+    runs-on: ${{ fromJSON(vars.CI_RUNNER_JSON || '"ubuntu-latest"') }}
+    timeout-minutes: 10
+    env:
+      # Tests inject evaluators; never use runner credentials for inference.
+      AI_GATEWAY_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
