@@ -6,6 +6,22 @@ A small local workbench that classifies bank transactions into illustrative acco
 
 Paste CSV or load eight synthetic examples, run Jev, review the proposed categories and probabilities, and download the results. There is no database or accounting-system connection.
 
+## Reusable demo goal
+
+Audience: technically comfortable bookkeepers, small-business owners, and developers exploring Jev's structured classification API. The goal is to demonstrate one repeatable workflow: load synthetic transactions → classify with Jev → inspect suggestions and Unassigned rows → download a review CSV. It demonstrates the API and review behavior, without claiming accounting accuracy or time savings.
+
+Success criteria:
+
+1. All eight included synthetic transactions produce exactly one result each, in input order, retaining description, signed amount, and currency.
+2. Each transaction uses `typesafe-ai/jev` with the supplied category choices. A live smoke run receives eight valid, error-free classifications; Unassigned is a valid outcome.
+3. In the offline smoke run, low or missing probabilities, an explicit Unassigned choice, an invalid answer, and a Gateway failure all remain Unassigned with a visible review reason.
+4. Download produces a CSV header and eight rows, preserving transactions, suggestions, assignments, probability estimates, review flags, reasons, errors, and model identity.
+5. A rejected batch leaves the input intact and disables stale exports; a subsequent valid batch can classify and export. Gateway error details and credentials never reach the page or CSV.
+
+Run `npm run test:smoke` without keys or network inference. It runs the actual page script in a minimal DOM harness against a loopback server and mocks only the Gateway evaluator. This verifies the classify-and-export behavior, not browser layout or authenticated Jev inference. The app itself continues to require real Jev calls.
+
+Optional authenticated check (may incur Gateway charges): set `JEV_SMOKE_LIVE=1` and run `node --env-file-if-exists=.env --experimental-strip-types --test tests/demo-smoke.test.ts`. Live mode requires a server-side `AI_GATEWAY_API_KEY` and sends only the eight included synthetic examples through the same page/API/export path. It fails if any row has a Gateway or malformed-response error; categories and probabilities are not scored against labels. The deterministic failure tests still run offline. Test output contains pass/fail summaries only: do not capture keys, request logs, raw model output, or real bank data in Git. Offline success and authenticated inference are separate evidence.
+
 ## Requirements and terms
 
 - You need your own Vercel AI Gateway key (`AI_GATEWAY_API_KEY`).
