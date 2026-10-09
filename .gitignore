@@ -4,6 +4,7 @@ dist/
 .env.*
 !.env.example
 *.log
+evidence/
 .claude/
 .codex/
 .omc/

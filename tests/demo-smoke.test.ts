@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { createContext, runInContext } from 'node:vm';
 import test from 'node:test';
 import { createApp } from '../src/server.ts';
@@ -35,6 +36,7 @@ async function page(options: Parameters<typeof createApp>[0]) {
   const nodes = new Map<string, Node>();
   let download: Blob | undefined;
   let filename = '';
+  let classified: any;
   const get = (id: string) => {
     if (!nodes.has(id)) nodes.set(id, new Node());
     return nodes.get(id)!;
@@ -49,7 +51,11 @@ async function page(options: Parameters<typeof createApp>[0]) {
         createElement: () => new Node(),
         body: { append: (node: Node) => { filename = node.download; } },
       },
-      fetch: (path: string, init?: RequestInit) => fetch(url + path, init),
+      fetch: async (path: string, init?: RequestInit) => {
+        const response = await fetch(url + path, init);
+        if (path === '/api/classify') classified = await response.clone().json();
+        return response;
+      },
       Blob,
       URL: {
         createObjectURL: (blob: Blob) => { download = blob; return 'blob:smoke'; },
@@ -61,6 +67,7 @@ async function page(options: Parameters<typeof createApp>[0]) {
     assert.equal(get('sample-button').disabled, false, 'configuration loaded');
     return {
       get,
+      classified: () => classified,
       csv: async () => {
         assert.equal(get('download-button').disabled, false);
         await get('download-button').click();
@@ -172,6 +179,20 @@ test('optional live Jev synthetic classify-and-export', { skip: process.env.JEV_
     await app.get('classify-button').click();
     const { rows } = await app.csv();
     checkExport(rows);
+    // Counts only: never model output, probabilities, or transaction text.
+    const data = app.classified();
+    const summary = {
+      mode: 'live', model: data.model, generatedAt: new Date().toISOString(),
+      transactions: data.results.length,
+      assigned: data.results.filter((result: any) => !result.needsReview && !result.error).length,
+      needsReview: data.results.filter((result: any) => result.needsReview && !result.error).length,
+      errors: data.results.filter((result: any) => result.error).length,
+      totalLatencyMs: data.latencyMs,
+      inputTokens: data.inputTokens,
+    };
+    console.log(`live smoke aggregate: ${JSON.stringify(summary)}`);
+    await mkdir(new URL('../evidence/', import.meta.url), { recursive: true });
+    await writeFile(new URL('../evidence/jev-smoke-live.json', import.meta.url), JSON.stringify(summary, null, 2) + '\n');
     for (const row of rows.slice(1)) {
       // Avoid including model data or SDK diagnostics in assertion output.
       assert.ok(row[8] === '', 'live classification must be valid and error-free');
