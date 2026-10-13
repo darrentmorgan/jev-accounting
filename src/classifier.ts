@@ -38,7 +38,7 @@ export type EvaluationRequest = {
 export type Evaluator = (request: EvaluationRequest) => Promise<unknown>;
 const evaluate: Evaluator = request => experimental_evaluate(request);
 
-export type Classification = {
+type Classification = {
   transaction: Transaction;
   suggestedCategory: CategoryId;
   suggestedLabel: string;
