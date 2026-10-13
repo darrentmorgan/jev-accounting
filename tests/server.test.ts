@@ -118,3 +118,42 @@ test('env and source files are never served', async () => {
     for (const path of ['/.env', '/src/server.ts', '/package.json']) assert.equal((await fetch(url + path)).status, 404);
   } finally { await stop(server); }
 });
+
+test('batch lock covers incomplete uploads and releases after client interruption', { timeout: 5000 }, async () => {
+  let calls = 0;
+  const { server, url } = await start({ configured: () => true, evaluator: async () => { calls++; return validAnswer; } });
+  const received = once(server, 'request');
+  const upload = httpRequest(url + '/api/classify', { method: 'POST', headers });
+  // Destroying an incomplete upload causes an expected client-side socket error.
+  upload.on('error', () => {});
+  try {
+    upload.write('{"transactions":[');
+    const [request] = await received;
+    const aborted = once(request, 'aborted');
+    const concurrent = await fetch(url + '/api/classify', { method: 'POST', headers, body });
+    assert.equal(concurrent.status, 429);
+    await concurrent.text();
+    assert.equal(calls, 0, 'incomplete uploads cannot reach inference');
+    upload.destroy();
+    await aborted;
+    const retry = await fetch(url + '/api/classify', { method: 'POST', headers, body });
+    assert.equal(retry.status, 200);
+    assert.equal((await retry.json()).results[0].assignedCategory, 'software_subscriptions');
+    assert.equal(calls, 1);
+  } finally { upload.destroy(); await stop(server); }
+});
+
+test('compressed bodies are rejected before inference and release the batch lock', async () => {
+  let calls = 0;
+  const { server, url } = await start({ configured: () => true, evaluator: async () => { calls++; return validAnswer; } });
+  try {
+    const rejected = await fetch(url + '/api/classify', { method: 'POST', headers: { ...headers, 'Content-Encoding': 'gzip' }, body });
+    assert.equal(rejected.status, 415);
+    assert.match((await rejected.json()).error, /Compressed/);
+    assert.equal(calls, 0);
+    const retry = await fetch(url + '/api/classify', { method: 'POST', headers: { ...headers, 'Content-Encoding': 'identity' }, body });
+    assert.equal(retry.status, 200);
+    await retry.text();
+    assert.equal(calls, 1);
+  } finally { await stop(server); }
+});

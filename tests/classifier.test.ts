@@ -110,3 +110,40 @@ test('limits active evaluations to three', async () => {
   assert.equal(highest, 3);
   assert.equal(result.results.length, samples.length);
 });
+
+test('review threshold includes exactly 85 percent and rejects the value just below it', async () => {
+  for (const [probability, assigned] of [[0.85, 'software_subscriptions'], [0.849999, 'unassigned']] as const) {
+    const result = await classifyTransactions([samples[0]], async () => answer('software_subscriptions', probability));
+    assert.equal(result.results[0].confidence, probability);
+    assert.equal(result.results[0].assignedCategory, assigned);
+    assert.equal(result.results[0].needsReview, assigned === 'unassigned');
+  }
+});
+
+test('invalid declared probability precision cannot substantiate an assignment', async () => {
+  for (const probabilityDecimals of [null, '2', -1, 0, 1, 2.5, 16, NaN, Infinity]) {
+    const result = await classifyTransactions([samples[0]], async () => ({ ...answer(), rounding: { probabilityDecimals } }));
+    assert.equal(result.results[0].assignedCategory, 'unassigned');
+    assert.equal(result.results[0].confidence, null);
+    assert.equal(result.results[0].probabilities, null);
+    assert.match(result.results[0].error!, /invalid classification/);
+  }
+  // A distribution outside the declared rounding tolerance must still fail closed.
+  const response = answer('software_subscriptions', 0.88);
+  response.answers.account.probabilities.rent = 0.2;
+  const result = await classifyTransactions([samples[0]], async () => ({ ...response, rounding: { probabilityDecimals: 2 } }));
+  assert.equal(result.results[0].assignedCategory, 'unassigned');
+  assert.match(result.results[0].error!, /invalid classification/);
+});
+
+test('untrusted token usage stays unknown without invalidating valid classifications', async () => {
+  for (const usage of [undefined, null, [], {}, { inputTokens: '52' }, { inputTokens: -1 }, { inputTokens: 1.5 }, { inputTokens: Infinity }, { inputTokens: Number.MAX_SAFE_INTEGER + 1 }]) {
+    const result = await classifyTransactions(samples.slice(0, 2), async request => ({ ...answer(), usage: request.state.transaction === samples[0] ? usage : { inputTokens: 52 } }));
+    assert.equal(result.results[0].assignedCategory, 'software_subscriptions');
+    assert.equal(result.results[0].inputTokens, null);
+    assert.equal(result.results[1].inputTokens, 52);
+    assert.equal(result.inputTokens, null, 'unknown usage must not become a partial total');
+  }
+  const zero = await classifyTransactions([samples[0]], async () => ({ ...answer(), usage: { inputTokens: 0 } }));
+  assert.equal(zero.inputTokens, 0);
+});

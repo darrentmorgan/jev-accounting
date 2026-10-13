@@ -86,6 +86,7 @@ async function page(options: Parameters<typeof createApp>[0], browser: {
     assert.equal(get('sample-button').disabled, false, 'configuration loaded');
     return {
       get,
+      readTransactions: (source: string, limit = 25) => JSON.parse(runInContext(`JSON.stringify(readTransactions(${JSON.stringify(source)}, ${limit}))`, context)),
       downloads: () => downloads,
       scheduledDelays: () => scheduledDelays,
       classify: (deadlineMs: number) => runInContext(`classify(${deadlineMs})`, context) as Promise<void>,
@@ -193,6 +194,61 @@ test('rejected synthetic batch clears exports, preserves input, and can retry', 
     configured = true;
     await app.get('classify-button').click();
     checkExport((await app.csv()).rows);
+  } finally { await app.close(); }
+});
+
+test('CSV parser preserves quoted descriptions, signed money and currency defaults', async () => {
+  const app = await page({ configured: () => false });
+  try {
+    const csv = '\uFEFF Currency , Amount , Description\r\n aud ,-.50,"Office, ""paper""\r\nand pens"\r\n,+12.25,Customer receipt\r\n\r\n';
+    assert.deepEqual(app.readTransactions(csv), [
+      { description: 'Office, "paper"\r\nand pens', amount: -0.5, currency: 'AUD' },
+      { description: 'Customer receipt', amount: 12.25, currency: 'AUD' },
+    ]);
+    assert.deepEqual(app.readTransactions('description,amount\nx,-1'), [{ description: 'x', amount: -1, currency: 'AUD' }]);
+  } finally { await app.close(); }
+});
+
+test('invalid CSV cannot reach inference or enable exports', async () => {
+  let calls = 0;
+  const app = await page({ configured: () => true, evaluator: async () => { calls++; return answer(); } });
+  try {
+    const invalid = [
+      'description,amount,AMOUNT\nx,-1,-2',
+      'description,currency\nx,AUD',
+      'description,amount\nx,-1,extra',
+      'description,amount\n"x,-1',
+      'description,amount\n"x"oops,-1',
+      'description,amount\nx"y,-1',
+      ...['1e3', '0x10', '$12', 'NaN', 'Infinity', '0', '-0', '1000000000001'].map(amount => `description,amount\nx,${amount}`),
+      'description,amount,currency\nx,-1,AU',
+      'description,amount\n' + Array(26).fill('x,-1').join('\n'),
+    ];
+    for (const csv of invalid) {
+      assert.throws(() => app.readTransactions(csv), { name: 'Error' });
+      app.get('csv-input').value = csv;
+      await app.get('classify-button').click();
+      assert.equal(app.get('classify-button').disabled, true);
+      assert.equal(app.get('download-button').disabled, true);
+      assert.equal(app.get('results-body').hidden, true);
+    }
+    assert.equal(calls, 0);
+  } finally { await app.close(); }
+});
+
+test('CSV export neutralizes formula text while retaining numeric money', async () => {
+  const descriptions = ['=1+1', '+SUM(1,2)', '-1+2', '@SUM(1,2)', 'ordinary "quoted", text'];
+  const app = await page({ configured: () => true, evaluator: async () => answer() });
+  try {
+    app.get('csv-input').value = 'description,amount\n' + descriptions.map(description => `"${description.replace(/"/g, '""')}",-12.5`).join('\n');
+    await app.get('classify-button').click();
+    const { rows } = await app.csv();
+    assert.equal(rows.length, descriptions.length + 1);
+    descriptions.forEach((description, index) => {
+      assert.equal(rows[index + 1][0], index < 4 ? "'" + description : description);
+      assert.equal(rows[index + 1][1], '-12.5');
+    });
+    assert.equal(app.classified().results[0].transaction.description, '=1+1', 'escaping is confined to export');
   } finally { await app.close(); }
 });
 
